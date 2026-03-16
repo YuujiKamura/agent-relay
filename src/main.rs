@@ -1,0 +1,162 @@
+mod backend;
+mod commands;
+mod error;
+mod pipe;
+mod protocol;
+mod session;
+
+use backend::{AgentBackend, wt::WtBackend};
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(name = "agent-ctl", about = "Agent Control Plane CLI")]
+struct Cli {
+    /// Backend to use: wt
+    #[arg(long, default_value = "wt")]
+    backend: String,
+
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// List all control plane sessions
+    List {
+        /// Only show alive sessions
+        #[arg(long)]
+        alive_only: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Get agent status of a session
+    Status {
+        /// Session name or hint (substring match)
+        session: String,
+    },
+    /// Send text to a session (INPUT + Enter)
+    Send {
+        /// Session name or hint
+        session: String,
+        /// Text to send
+        text: String,
+    },
+    /// Read terminal output (TAIL)
+    Read {
+        /// Session name or hint
+        session: String,
+        /// Number of lines to read
+        #[arg(long, default_value = "30")]
+        lines: usize,
+    },
+    /// Wait for session to become idle
+    Wait {
+        /// Session name or hint
+        session: String,
+        /// Timeout in seconds
+        #[arg(long, default_value = "120")]
+        timeout: u64,
+        /// Auto-approve when approval is detected
+        #[arg(long)]
+        auto_approve: bool,
+    },
+    /// Send + wait + read in one command
+    Run {
+        /// Session name or hint
+        session: String,
+        /// Prompt to send
+        prompt: String,
+        /// Timeout in seconds
+        #[arg(long, default_value = "300")]
+        timeout: u64,
+        /// Auto-approve when approval is detected
+        #[arg(long)]
+        auto_approve: bool,
+        /// Lines to read after completion
+        #[arg(long, default_value = "30")]
+        lines: usize,
+    },
+    /// Send approval (y + Enter) to a session
+    Approve {
+        /// Session name or hint
+        session: String,
+    },
+    /// Tab management (new, switch, close, list)
+    Tab {
+        /// Session name or hint
+        session: String,
+        /// Action: new, switch, close, list
+        action: String,
+        /// Tab index (required for switch, optional for close)
+        index: Option<usize>,
+    },
+    /// Launch an agent in a session
+    Launch {
+        /// Session name or hint
+        session: String,
+        /// Agent type: claude, gemini, codex
+        agent_type: String,
+        /// Optional initial prompt
+        #[arg(long)]
+        prompt: Option<String>,
+    },
+    /// Stop an agent in a session
+    Stop {
+        /// Session name or hint
+        session: String,
+        /// Agent type: claude, gemini, codex
+        agent_type: String,
+    },
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    let backend: Box<dyn AgentBackend> = match cli.backend.as_str() {
+        "wt" => Box::new(WtBackend),
+        other => {
+            eprintln!("Error: Unknown backend '{}'", other);
+            std::process::exit(1);
+        }
+    };
+
+    let result = match cli.command {
+        Commands::List { alive_only, json } => commands::list::run(backend.as_ref(), alive_only, json),
+        Commands::Status { session } => commands::status::run(backend.as_ref(), &session),
+        Commands::Send { session, text } => commands::send::run(backend.as_ref(), &session, &text),
+        Commands::Read { session, lines } => commands::read::run(backend.as_ref(), &session, lines),
+        Commands::Wait {
+            session,
+            timeout,
+            auto_approve,
+        } => commands::wait::run(backend.as_ref(), &session, timeout, auto_approve),
+        Commands::Run {
+            session,
+            prompt,
+            timeout,
+            auto_approve,
+            lines,
+        } => commands::run::run(backend.as_ref(), &session, &prompt, timeout, auto_approve, lines),
+        Commands::Approve { session } => commands::approve::run(backend.as_ref(), &session),
+        Commands::Tab {
+            session,
+            action,
+            index,
+        } => commands::tab::run(backend.as_ref(), &session, &action, index),
+        Commands::Launch {
+            session,
+            agent_type,
+            prompt,
+        } => commands::launch::run(backend.as_ref(), &session, &agent_type, prompt.as_deref()),
+        Commands::Stop {
+            session,
+            agent_type,
+        } => commands::stop::run(backend.as_ref(), &session, &agent_type),
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    }
+}

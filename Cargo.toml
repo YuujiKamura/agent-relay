@@ -1,0 +1,26 @@
+[package]
+name = "agent-ctl"
+version = "0.1.0"
+edition = "2021"
+description = "Rust CLI for Windows Terminal Control Plane — replaces wt-control.ps1"
+authors = ["yuuji"]
+
+[[bin]]
+name = "agent-ctl"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+thiserror = "1.0"
+base64 = "0.22"
+windows = { version = "0.58", features = [
+    "Win32_Storage_FileSystem",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+    "Win32_Foundation",
+    "Win32_System_IO",
+    "Win32_Security",
+] }
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
