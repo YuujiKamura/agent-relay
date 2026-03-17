@@ -16,13 +16,24 @@ pub struct SessionInfo {
 
 impl SessionInfo {
     fn from_map(map: &HashMap<String, String>) -> Option<Self> {
+        let pipe_path = map.get("pipe_path")?.clone();
+        let pipe_name = map
+            .get("pipe_name")
+            .cloned()
+            .unwrap_or_else(|| {
+                // Derive pipe_name from pipe_path: \\.\pipe\NAME -> NAME
+                pipe_path
+                    .strip_prefix("\\\\.\\pipe\\")
+                    .unwrap_or(&pipe_path)
+                    .to_string()
+            });
         Some(Self {
             session_name: map.get("session_name")?.clone(),
             safe_session_name: map.get("safe_session_name").cloned().unwrap_or_default(),
             pid: map.get("pid")?.parse().ok()?,
             hwnd: map.get("hwnd").cloned().unwrap_or_default(),
-            pipe_name: map.get("pipe_name")?.clone(),
-            pipe_path: map.get("pipe_path")?.clone(),
+            pipe_name,
+            pipe_path,
             log_file: map.get("log_file").cloned().unwrap_or_default(),
         })
     }

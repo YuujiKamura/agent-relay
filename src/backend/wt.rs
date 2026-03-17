@@ -56,58 +56,63 @@ impl AgentBackend for WtBackend {
     fn wait(&self, session_hint: &str, timeout_secs: u64, auto_approve: bool) -> Result<()> {
         let s = session::find_session(session_hint)?;
         let deadline = Instant::now() + Duration::from_secs(timeout_secs);
-        let poll_interval = Duration::from_millis(2000);
+        let poll_interval = Duration::from_millis(3000);
 
-        let mut consecutive_idle = 0u32;
+        // State machine: WORKING → IDLE → DONE (after 30s idle)
+        //                WORKING → APPROVAL → (send once) → wait for !APPROVAL → WORKING
+        let mut approval_sent = false; // true = already sent, waiting for APPROVAL to clear
 
         loop {
             if Instant::now() > deadline {
                 return Err(AgentCtlError::WaitTimeout(timeout_secs));
             }
 
-            // Query agent status
             let response = match pipe::send_pipe_message(&s.pipe_path, &protocol::agent_status()) {
                 Ok(r) => r,
                 Err(_) => {
-                    // Pipe busy — skip and retry
+                    // Bug #3: reset consecutive_idle on pipe error (now removed, but keep approval_sent)
                     std::thread::sleep(poll_interval);
                     continue;
                 }
             };
 
             let Some(status) = AgentStatusResponse::parse(&response) else {
+                // Bug #3: reset consecutive_idle on parse error (now removed, but keep approval_sent)
                 std::thread::sleep(poll_interval);
                 continue;
             };
 
             match status.status.as_str() {
+                // ── APPROVAL: send once, wait for state transition ──
                 "APPROVAL" => {
-                    if auto_approve {
-                        eprintln!("[wait] Approval detected, auto-approving...");
-                        let approve_msg = protocol::raw_input("agent-ctl", "y\r");
+                    if !auto_approve {
+                        return Err(AgentCtlError::Other(
+                            "APPROVAL required but auto_approve is disabled (use --auto-approve)".into(),
+                        ));
+                    }
+                    if !approval_sent {
+                        eprintln!("[wait] APPROVAL detected, sending approval...");
+                        let approve_msg = protocol::raw_input("agent-ctl", "1");
                         let _ = pipe::send_pipe_message(&s.pipe_path, &approve_msg);
-                        consecutive_idle = 0;
-                    } else {
-                        eprintln!("[wait] Approval required (use --auto-approve to auto-respond)");
+                        approval_sent = true;
                     }
+                    // approval_sent=true: do nothing, wait for WORKING/IDLE transition
                 }
+                // ── IDLE/READY: DONE after 30s sustained idle ──
                 "IDLE" | "READY" => {
-                    if status.ms_since_change > 2000 {
-                        consecutive_idle += 1;
-                        if consecutive_idle >= 2 {
-                            eprintln!("[wait] Done (status={}, idle for {}ms)", status.status, status.ms_since_change);
-                            return Ok(());
-                        }
-                    } else {
-                        consecutive_idle = 0;
+                    approval_sent = false; // APPROVAL cleared
+                    // Bug #5: simplified — just check ms_since_change > 30000
+                    if status.ms_since_change > 30000 {
+                        eprintln!("[wait] DONE (idle for {}ms)", status.ms_since_change);
+                        return Ok(());
                     }
                 }
+                // ── WORKING: agent is active, APPROVAL was consumed ──
                 "WORKING" | "STARTING" => {
-                    consecutive_idle = 0;
+                    approval_sent = false; // state transitioned away from APPROVAL, safe to reset
                 }
                 other => {
                     eprintln!("[wait] Unknown status: {}", other);
-                    consecutive_idle = 0;
                 }
             }
 
