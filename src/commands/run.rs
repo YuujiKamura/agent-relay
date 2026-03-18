@@ -22,11 +22,13 @@ fn ensure_session(
     session_hint: &str,
     exe: Option<&str>,
 ) -> Result<String> {
-    // Try to find an existing alive session
+    // Try to find an existing alive session (check PID first to avoid pipe hang on DEAD)
     let sessions = session::discover_sessions();
     for s in &sessions {
+        if !session::is_process_alive(s.pid) {
+            continue;
+        }
         if session_hint.is_empty() || s.session_name.contains(session_hint) {
-            // Check if alive by pinging via pipe
             if send_pipe_message(&s.pipe_path, "PING").is_ok() {
                 eprintln!("[run] Found alive session: {}", s.session_name);
                 return Ok(s.session_name.clone());
@@ -42,11 +44,16 @@ fn ensure_session(
     })?;
 
     eprintln!("[run] No alive session. Launching {}...", exe_path);
+    use std::os::windows::process::CommandExt;
+    // CREATE_NEW_CONSOLE: ghostty gets its own console, survives if agent-ctl dies
+    const CREATE_NEW_CONSOLE: u32 = 0x00000010;
     let mut cmd = std::process::Command::new(exe_path);
     cmd.env("GHOSTTY_CONTROL_PLANE", "1");
-    cmd.spawn().map_err(|e| {
+    cmd.creation_flags(CREATE_NEW_CONSOLE);
+    let child = cmd.spawn().map_err(|e| {
         AgentCtlError::Other(format!("Failed to launch {}: {}", exe_path, e))
     })?;
+    eprintln!("[run] Launched PID {}", child.id());
 
     // Poll for alive session
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -57,6 +64,9 @@ fn ensure_session(
         std::thread::sleep(Duration::from_secs(2));
         let sessions = session::discover_sessions();
         for s in &sessions {
+            if !session::is_process_alive(s.pid) {
+                continue;
+            }
             if send_pipe_message(&s.pipe_path, "PING").is_ok() {
                 eprintln!("[run] Session appeared: {}", s.session_name);
                 return Ok(s.session_name.clone());

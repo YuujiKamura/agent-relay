@@ -66,17 +66,18 @@ enum Commands {
     },
     /// Launch terminal (if needed), start agent, send task, wait for completion
     Run {
-        /// Session name or hint (empty string = any alive session)
-        #[arg(default_value = "")]
-        session: String,
         /// Agent type: claude, gemini, codex
         #[arg(long)]
         agent: String,
         /// Task to send to the agent
+        #[arg(long)]
         task: String,
         /// Path to terminal exe (launches if no alive session found)
         #[arg(long)]
         exe: Option<String>,
+        /// Session name or hint (empty = any alive session)
+        #[arg(long, default_value = "")]
+        session: String,
     },
     /// Send approval (y + Enter) to a session
     Approve {
