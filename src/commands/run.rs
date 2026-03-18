@@ -99,7 +99,6 @@ pub fn run(
 
     if already_has_agent {
         eprintln!("[run] Agent already running, skipping launch steps");
-        println!("READY | session={} | agent={} | reused=true", session, agent);
     } else {
         let cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
@@ -135,13 +134,13 @@ pub fn run(
                 }
             }
         }
-        println!("READY | session={} | agent={}", session, agent);
     }
+    println!("AGENT_READY | session={} | agent={}", session, agent);
     if stop_at == "ready" {
         return Ok(());
     }
 
-    // Send task + Enter, retry if TUI wasn't ready
+    // Send task + Enter, retry until TUI accepts
     let needle = task.char_indices().nth(4).map(|(i, _)| &task[..i]).unwrap_or(task);
     let mut attempts = 0;
     loop {
@@ -158,11 +157,12 @@ pub fn run(
             }
         }
         if attempts >= 5 {
-            println!("TASK_SET | session={} | agent={} | attempts={} | unconfirmed=true", session, agent, attempts);
+            eprintln!("[run] WARNING: task not confirmed after 5 attempts");
+            println!("TASK_SET | session={} | agent={} | unconfirmed=true", session, agent);
             break;
         }
-        eprintln!("[run] Task not in buffer yet, retrying ({}/5)...", attempts);
-        std::thread::sleep(Duration::from_secs(2));
+        eprintln!("[run] Retry ({}/5)...", attempts);
+        std::thread::sleep(Duration::from_secs(1));
     }
     if stop_at == "sent" {
         return Ok(());
