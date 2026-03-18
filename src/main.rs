@@ -64,15 +64,19 @@ enum Commands {
         #[arg(long)]
         auto_approve: bool,
     },
-    /// Launch agent in session, send task, wait for completion
+    /// Launch terminal (if needed), start agent, send task, wait for completion
     Run {
-        /// Session name or hint
+        /// Session name or hint (empty string = any alive session)
+        #[arg(default_value = "")]
         session: String,
         /// Agent type: claude, gemini, codex
         #[arg(long)]
         agent: String,
         /// Task to send to the agent
         task: String,
+        /// Path to terminal exe (launches if no alive session found)
+        #[arg(long)]
+        exe: Option<String>,
     },
     /// Send approval (y + Enter) to a session
     Approve {
@@ -161,7 +165,8 @@ fn main() {
             session,
             agent,
             task,
-        } => commands::run::run(backend.as_ref(), &session, &agent, &task),
+            exe,
+        } => commands::run::run(backend.as_ref(), &session, &agent, &task, exe.as_deref()),
         Commands::Approve { session } => commands::approve::run(backend.as_ref(), &session),
         Commands::Tab {
             session,
