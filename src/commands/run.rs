@@ -90,31 +90,53 @@ pub fn run(
         return Ok(());
     }
 
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| ".".to_string());
+    // Detect current state to skip unnecessary steps
+    let already_has_agent = if let Ok(buf) = backend.read(&session, 30) {
+        buf.contains(ready_prompt)
+    } else {
+        false
+    };
 
-    // bash + cd + agent start
-    backend.raw_send(&session, "bash\r")?;
-    std::thread::sleep(Duration::from_secs(2));
-    backend.raw_send(&session, &format!("cd {}\r", cwd))?;
-    std::thread::sleep(Duration::from_secs(2));
-    backend.raw_send(&session, &format!("{}\r", start_cmd))?;
+    if already_has_agent {
+        eprintln!("[run] Agent already running, skipping launch steps");
+        println!("READY | session={} | agent={} | reused=true", session, agent);
+    } else {
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string());
 
-    // Wait for agent ready prompt
-    let deadline = Instant::now() + Duration::from_secs(60);
-    loop {
-        if Instant::now() > deadline {
-            return Err(AgentCtlError::WaitTimeout(60));
+        // Check if we're in a shell or need bash
+        let needs_bash = if let Ok(state_resp) = backend.state(&session) {
+            // Fresh terminal with cmd.exe needs bash
+            state_resp.contains("cmd.exe")
+        } else {
+            true
+        };
+
+        if needs_bash {
+            backend.raw_send(&session, "bash\r")?;
+            std::thread::sleep(Duration::from_secs(2));
         }
+
+        backend.raw_send(&session, &format!("cd {}\r", cwd))?;
         std::thread::sleep(Duration::from_secs(2));
-        if let Ok(buf) = backend.read(&session, 30) {
-            if buf.contains(ready_prompt) {
-                break;
+        backend.raw_send(&session, &format!("{}\r", start_cmd))?;
+
+        // Wait for agent ready prompt
+        let deadline = Instant::now() + Duration::from_secs(60);
+        loop {
+            if Instant::now() > deadline {
+                return Err(AgentCtlError::WaitTimeout(60));
+            }
+            std::thread::sleep(Duration::from_secs(2));
+            if let Ok(buf) = backend.read(&session, 30) {
+                if buf.contains(ready_prompt) {
+                    break;
+                }
             }
         }
+        println!("READY | session={} | agent={}", session, agent);
     }
-    println!("READY | session={} | agent={}", session, agent);
     if stop_at == "ready" {
         return Ok(());
     }
