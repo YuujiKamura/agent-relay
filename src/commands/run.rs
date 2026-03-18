@@ -141,18 +141,11 @@ pub fn run(
         return Ok(());
     }
 
-    // Send task
+    // Send task + Enter (submit)
     backend.send(&session, task)?;
-    std::thread::sleep(Duration::from_secs(2));
-
-    // Verify task in buffer
-    let verified = if let Ok(buf) = backend.read(&session, 50) {
-        let needle = task.char_indices().nth(8).map(|(i, _)| &task[..i]).unwrap_or(task);
-        buf.contains(needle)
-    } else {
-        false
-    };
-    println!("TASK_SET | session={} | agent={} | verified={}", session, agent, verified);
+    std::thread::sleep(Duration::from_millis(200));
+    backend.raw_send(&session, "\r")?;
+    println!("TASK_SET | session={} | agent={}", session, agent);
     if stop_at == "sent" {
         return Ok(());
     }
