@@ -41,6 +41,9 @@ enum Commands {
         session: String,
         /// Text to send
         text: String,
+        /// Also send raw CR after the text
+        #[arg(long)]
+        enter: bool,
     },
     /// Read terminal output (TAIL)
     Read {
@@ -124,6 +127,8 @@ enum Commands {
         /// Session name or hint
         session: String,
     },
+    /// Remove dead session files from LocalAppData
+    Clean,
     /// Automated smoke test (PING + LIST_TABS + STATE)
     Smoke {
         /// Session name or hint
@@ -145,7 +150,7 @@ fn main() {
     let result = match cli.command {
         Commands::List { alive_only, json } => commands::list::run(backend.as_ref(), alive_only, json),
         Commands::Status { session } => commands::status::run(backend.as_ref(), &session),
-        Commands::Send { session, text } => commands::send::run(backend.as_ref(), &session, &text),
+        Commands::Send { session, text, enter } => commands::send::run(backend.as_ref(), &session, &text, enter),
         Commands::Read { session, lines } => commands::read::run(backend.as_ref(), &session, lines),
         Commands::Wait {
             session,
@@ -176,6 +181,7 @@ fn main() {
         Commands::RawSend { session, text } => commands::raw_send::run(backend.as_ref(), &session, &text),
         Commands::State { session } => commands::state::run(backend.as_ref(), &session),
         Commands::Tabs { session } => commands::tabs::run(backend.as_ref(), &session),
+        Commands::Clean => commands::clean::run(),
         Commands::Smoke { session } => commands::smoke::run(backend.as_ref(), &session),
     };
 

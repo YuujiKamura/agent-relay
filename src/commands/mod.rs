@@ -1,4 +1,5 @@
 pub mod approve;
+pub mod clean;
 pub mod launch;
 pub mod list;
 pub mod ping;
