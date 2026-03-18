@@ -81,29 +81,27 @@ pub fn run(
     agent: &str,
     task: &str,
     exe: Option<&str>,
+    stop_at: &str,
 ) -> Result<()> {
     let (start_cmd, ready_prompt) = agent_config(agent)?;
     let session = ensure_session(session_hint, exe)?;
+    println!("LAUNCH | session={}", session);
+    if stop_at == "launch" {
+        return Ok(());
+    }
+
     let cwd = std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| ".".to_string());
 
-    // Step 1: bash + Enter, wait 2s
-    eprintln!("[run] Sending bash...");
+    // bash + cd + agent start
     backend.raw_send(&session, "bash\r")?;
     std::thread::sleep(Duration::from_secs(2));
-
-    // Step 2: cd to working dir + Enter, wait 2s
-    eprintln!("[run] cd {}", cwd);
     backend.raw_send(&session, &format!("cd {}\r", cwd))?;
     std::thread::sleep(Duration::from_secs(2));
-
-    // Step 3: agent start command + Enter
-    eprintln!("[run] Starting {}...", agent);
     backend.raw_send(&session, &format!("{}\r", start_cmd))?;
 
-    // Step 4: poll read buffer until ready prompt detected
-    eprintln!("[run] Waiting for ready prompt '{}'...", ready_prompt);
+    // Wait for agent ready prompt
     let deadline = Instant::now() + Duration::from_secs(60);
     loop {
         if Instant::now() > deadline {
@@ -112,18 +110,32 @@ pub fn run(
         std::thread::sleep(Duration::from_secs(2));
         if let Ok(buf) = backend.read(&session, 30) {
             if buf.contains(ready_prompt) {
-                eprintln!("[run] Ready prompt detected.");
                 break;
             }
         }
     }
+    println!("READY | session={} | agent={}", session, agent);
+    if stop_at == "ready" {
+        return Ok(());
+    }
 
-    // Step 5: send task text + Enter
-    eprintln!("[run] Sending task...");
+    // Send task
     backend.send(&session, task)?;
+    std::thread::sleep(Duration::from_secs(2));
 
-    // Step 6: poll state until prompt=1
-    eprintln!("[run] Polling state until prompt=1...");
+    // Verify task in buffer
+    let verified = if let Ok(buf) = backend.read(&session, 50) {
+        let needle = task.char_indices().nth(8).map(|(i, _)| &task[..i]).unwrap_or(task);
+        buf.contains(needle)
+    } else {
+        false
+    };
+    println!("TASK_SET | session={} | agent={} | verified={}", session, agent, verified);
+    if stop_at == "sent" {
+        return Ok(());
+    }
+
+    // Wait for completion (prompt=1)
     let deadline = Instant::now() + Duration::from_secs(600);
     loop {
         if Instant::now() > deadline {
@@ -132,7 +144,7 @@ pub fn run(
         std::thread::sleep(Duration::from_secs(3));
         if let Ok(state_resp) = backend.state(&session) {
             if state_resp.contains("prompt=1") {
-                eprintln!("[run] Done (prompt=1).");
+                println!("TASK_DONE | session={} | agent={}", session, agent);
                 return Ok(());
             }
         }

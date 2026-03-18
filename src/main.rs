@@ -78,6 +78,9 @@ enum Commands {
         /// Session name or hint (empty = any alive session)
         #[arg(long, default_value = "")]
         session: String,
+        /// Stop at stage: launch, ready, sent (default), done
+        #[arg(long, default_value = "sent")]
+        stop_at: String,
     },
     /// Send approval (y + Enter) to a session
     Approve {
@@ -167,7 +170,8 @@ fn main() {
             agent,
             task,
             exe,
-        } => commands::run::run(backend.as_ref(), &session, &agent, &task, exe.as_deref()),
+            stop_at,
+        } => commands::run::run(backend.as_ref(), &session, &agent, &task, exe.as_deref(), &stop_at),
         Commands::Approve { session } => commands::approve::run(backend.as_ref(), &session),
         Commands::Tab {
             session,
