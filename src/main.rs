@@ -61,21 +61,15 @@ enum Commands {
         #[arg(long)]
         auto_approve: bool,
     },
-    /// Send + wait + read in one command
+    /// Launch agent in session, send task, wait for completion
     Run {
         /// Session name or hint
         session: String,
-        /// Prompt to send
-        prompt: String,
-        /// Timeout in seconds
-        #[arg(long, default_value = "300")]
-        timeout: u64,
-        /// Auto-approve when approval is detected
+        /// Agent type: claude, gemini, codex
         #[arg(long)]
-        auto_approve: bool,
-        /// Lines to read after completion
-        #[arg(long, default_value = "30")]
-        lines: usize,
+        agent: String,
+        /// Task to send to the agent
+        task: String,
     },
     /// Send approval (y + Enter) to a session
     Approve {
@@ -160,11 +154,9 @@ fn main() {
         } => commands::wait::run(backend.as_ref(), &session, timeout, auto_approve),
         Commands::Run {
             session,
-            prompt,
-            timeout,
-            auto_approve,
-            lines,
-        } => commands::run::run(backend.as_ref(), &session, &prompt, timeout, auto_approve, lines),
+            agent,
+            task,
+        } => commands::run::run(backend.as_ref(), &session, &agent, &task),
         Commands::Approve { session } => commands::approve::run(backend.as_ref(), &session),
         Commands::Tab {
             session,
