@@ -24,4 +24,12 @@ pub trait AgentBackend {
     fn tab(&self, session_hint: &str, action: &str, index: Option<usize>) -> Result<String>;
     fn launch(&self, session_hint: &str, agent_type: &str, prompt: Option<&str>) -> Result<()>;
     fn stop(&self, session_hint: &str, agent_type: &str) -> Result<()>;
+    /// Send PING, return raw response string
+    fn ping(&self, session_hint: &str) -> Result<String>;
+    /// Send RAW_INPUT with text (no Enter appended)
+    fn raw_send(&self, session_hint: &str, text: &str) -> Result<()>;
+    /// Send STATE request, return raw response
+    fn state(&self, session_hint: &str) -> Result<String>;
+    /// Send LIST_TABS request, return raw response
+    fn tabs(&self, session_hint: &str) -> Result<String>;
 }

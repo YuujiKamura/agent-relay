@@ -205,6 +205,34 @@ impl AgentBackend for WtBackend {
         Ok(())
     }
 
+    fn ping(&self, session_hint: &str) -> Result<String> {
+        let s = session::find_session(session_hint)?;
+        let resp = pipe::send_pipe_message(&s.pipe_path, &protocol::ping())?;
+        Ok(resp)
+    }
+
+    fn raw_send(&self, session_hint: &str, text: &str) -> Result<()> {
+        let s = session::find_session(session_hint)?;
+        let msg = protocol::raw_input("agent-ctl", text);
+        let response = pipe::send_pipe_message(&s.pipe_path, &msg)?;
+        if let Some(err) = protocol::is_error(&response) {
+            return Err(AgentCtlError::ServerError(err));
+        }
+        Ok(())
+    }
+
+    fn state(&self, session_hint: &str) -> Result<String> {
+        let s = session::find_session(session_hint)?;
+        let resp = pipe::send_pipe_message(&s.pipe_path, &protocol::state(None))?;
+        Ok(resp)
+    }
+
+    fn tabs(&self, session_hint: &str) -> Result<String> {
+        let s = session::find_session(session_hint)?;
+        let resp = pipe::send_pipe_message(&s.pipe_path, &protocol::list_tabs())?;
+        Ok(resp)
+    }
+
     fn stop(&self, session_hint: &str, agent_type: &str) -> Result<()> {
         let s = session::find_session(session_hint)?;
 

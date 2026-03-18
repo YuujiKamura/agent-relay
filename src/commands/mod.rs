@@ -1,10 +1,15 @@
 pub mod approve;
 pub mod launch;
 pub mod list;
+pub mod ping;
+pub mod raw_send;
 pub mod read;
 pub mod run;
 pub mod send;
+pub mod smoke;
+pub mod state;
 pub mod status;
 pub mod stop;
 pub mod tab;
+pub mod tabs;
 pub mod wait;

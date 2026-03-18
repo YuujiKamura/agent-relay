@@ -108,6 +108,33 @@ enum Commands {
         /// Agent type: claude, gemini, codex
         agent_type: String,
     },
+    /// Send PING, expect OK response
+    Ping {
+        /// Session name or hint
+        session: String,
+    },
+    /// Send RAW_INPUT (no Enter appended)
+    RawSend {
+        /// Session name or hint
+        session: String,
+        /// Text to send raw
+        text: String,
+    },
+    /// Send STATE request, print response
+    State {
+        /// Session name or hint
+        session: String,
+    },
+    /// Send LIST_TABS request, print response
+    Tabs {
+        /// Session name or hint
+        session: String,
+    },
+    /// Automated smoke test (PING + LIST_TABS + STATE)
+    Smoke {
+        /// Session name or hint
+        session: String,
+    },
 }
 
 fn main() {
@@ -153,6 +180,11 @@ fn main() {
             session,
             agent_type,
         } => commands::stop::run(backend.as_ref(), &session, &agent_type),
+        Commands::Ping { session } => commands::ping::run(backend.as_ref(), &session),
+        Commands::RawSend { session, text } => commands::raw_send::run(backend.as_ref(), &session, &text),
+        Commands::State { session } => commands::state::run(backend.as_ref(), &session),
+        Commands::Tabs { session } => commands::tabs::run(backend.as_ref(), &session),
+        Commands::Smoke { session } => commands::smoke::run(backend.as_ref(), &session),
     };
 
     if let Err(e) = result {
