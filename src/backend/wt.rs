@@ -100,11 +100,10 @@ impl AgentBackend for WtBackend {
                     }
                     // approval_sent=true: do nothing, wait for WORKING/IDLE transition
                 }
-                // ── IDLE/READY: DONE after 30s sustained idle ──
+                // ── IDLE/READY: DONE after 8s sustained idle ──
                 "IDLE" | "READY" => {
                     approval_sent = false; // APPROVAL cleared
-                    // Bug #5: simplified — just check ms_since_change > 30000
-                    if status.ms_since_change > 30000 {
+                    if status.ms_since_change > 8000 {
                         eprintln!("[wait] DONE (idle for {}ms)", status.ms_since_change);
                         return Ok(());
                     }
