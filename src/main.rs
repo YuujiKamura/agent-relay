@@ -1,6 +1,7 @@
 mod backend;
 mod commands;
 mod error;
+mod librarian;
 mod pipe;
 mod protocol;
 mod session;
@@ -34,6 +35,9 @@ enum Commands {
     Status {
         /// Session name or hint (substring match)
         session: String,
+        /// Use LLM librarian for state judgment instead of DLL status engine
+        #[arg(long)]
+        librarian: bool,
     },
     /// Send text to a session (INPUT + Enter)
     Send {
@@ -63,6 +67,9 @@ enum Commands {
         /// Auto-approve when approval is detected
         #[arg(long)]
         auto_approve: bool,
+        /// Use LLM librarian for state judgment
+        #[arg(long)]
+        librarian: bool,
     },
     /// Launch terminal (if needed), start agent, send task, wait for completion
     Run {
@@ -81,6 +88,9 @@ enum Commands {
         /// Stop at stage: launch, ready, sent (default), done
         #[arg(long, default_value = "sent")]
         stop_at: String,
+        /// Use LLM librarian for state judgment in wait phase
+        #[arg(long)]
+        librarian: bool,
     },
     /// Send approval (y + Enter) to a session
     Approve {
@@ -157,21 +167,23 @@ fn main() {
 
     let result = match cli.command {
         Commands::List { alive_only, json } => commands::list::run(backend.as_ref(), alive_only, json),
-        Commands::Status { session } => commands::status::run(backend.as_ref(), &session),
+        Commands::Status { session, librarian } => commands::status::run(backend.as_ref(), &session, librarian),
         Commands::Send { session, text, enter } => commands::send::run(backend.as_ref(), &session, &text, enter),
         Commands::Read { session, lines } => commands::read::run(backend.as_ref(), &session, lines),
         Commands::Wait {
             session,
             timeout,
             auto_approve,
-        } => commands::wait::run(backend.as_ref(), &session, timeout, auto_approve),
+            librarian,
+        } => commands::wait::run(backend.as_ref(), &session, timeout, auto_approve, librarian),
         Commands::Run {
             session,
             agent,
             task,
             exe,
             stop_at,
-        } => commands::run::run(backend.as_ref(), &session, &agent, &task, exe.as_deref(), &stop_at),
+            librarian,
+        } => commands::run::run(backend.as_ref(), &session, &agent, &task, exe.as_deref(), &stop_at, librarian),
         Commands::Approve { session } => commands::approve::run(backend.as_ref(), &session),
         Commands::Tab {
             session,

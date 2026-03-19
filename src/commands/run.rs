@@ -65,6 +65,7 @@ pub fn run(
     task: &str,
     exe: Option<&str>,
     stop_at: &str,
+    use_librarian: bool,
 ) -> Result<()> {
     // Step 1: Ensure session exists
     let session = ensure_session(session_hint, exe)?;
@@ -89,9 +90,13 @@ pub fn run(
         return Ok(());
     }
 
-    // Step 4: Wait for completion via backend.wait (status-based, with auto-approve)
+    // Step 4: Wait for completion
     eprintln!("[run] Waiting for completion (auto-approve enabled)...");
-    backend.wait(&session, 600, true)?;
+    if use_librarian {
+        super::wait::run(backend, &session, 600, true, true)?;
+    } else {
+        backend.wait(&session, 600, true)?;
+    }
     println!("TASK_DONE | session={} | agent={}", session, agent);
     Ok(())
 }
