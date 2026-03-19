@@ -1,3 +1,4 @@
 /target
 Cargo.lock
 LOCAL_APPDATA_FONTCONFIG_CACHE/
+logs/
