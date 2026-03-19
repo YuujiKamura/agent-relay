@@ -34,7 +34,9 @@ impl AgentBackend for WtBackend {
         if let Some(err) = protocol::is_error(&response) {
             return Err(AgentCtlError::ServerError(err));
         }
-        // Step 2: Send Enter via RAW_INPUT
+        // Step 2: Wait for TUI to process INPUT before sending Enter
+        std::thread::sleep(Duration::from_secs(1));
+        // Step 3: Send Enter via RAW_INPUT (separate from INPUT so TUI treats it as submit)
         let enter_msg = protocol::raw_input("agent-ctl", "\r");
         let response2 = pipe::send_pipe_message(&s.pipe_path, &enter_msg)?;
         if let Some(err) = protocol::is_error(&response2) {
