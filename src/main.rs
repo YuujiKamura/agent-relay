@@ -1,7 +1,9 @@
 mod backend;
+#[cfg(feature = "bridge")]
 mod bridge;
 mod commands;
 mod error;
+#[cfg(feature = "librarian")]
 mod librarian;
 mod pipe;
 mod protocol;
@@ -33,6 +35,7 @@ enum Commands {
         json: bool,
     },
     /// Get agent status of a session (via Librarian)
+    #[cfg(feature = "librarian")]
     Status {
         /// Session name or hint (substring match)
         session: String,
@@ -141,6 +144,7 @@ enum Commands {
         session: String,
     },
     /// JSON bridge server for agent-deck WtcpDriver
+    #[cfg(feature = "bridge")]
     Bridge {
         /// Named pipe path (default: \\.\pipe\WT_CP_bridge)
         #[arg(long)]
@@ -154,6 +158,7 @@ enum Commands {
         session: String,
     },
     /// Auto-cycle all agents and capture real buffers for test fixtures
+    #[cfg(feature = "librarian")]
     SampleAll {
         /// Session name or hint
         session: String,
@@ -165,6 +170,7 @@ enum Commands {
         output: Option<String>,
     },
     /// Capture real terminal buffer as Librarian test fixture
+    #[cfg(feature = "librarian")]
     Sample {
         /// Session name or hint
         session: String,
@@ -193,6 +199,7 @@ fn main() {
 
     let result = match cli.command {
         Commands::List { alive_only, json } => commands::list::run(backend.as_ref(), alive_only, json),
+        #[cfg(feature = "librarian")]
         Commands::Status { session } => commands::status::run(backend.as_ref(), &session),
         Commands::Send { session, text, enter } => commands::send::run(backend.as_ref(), &session, &text, enter),
         Commands::Read { session, lines, tab } => commands::read::run(backend.as_ref(), &session, lines, tab),
@@ -227,12 +234,15 @@ fn main() {
         Commands::RawSend { session, text } => commands::raw_send::run(backend.as_ref(), &session, &text),
         Commands::State { session } => commands::state::run(backend.as_ref(), &session),
         Commands::Tabs { session } => commands::tabs::run(backend.as_ref(), &session),
+        #[cfg(feature = "bridge")]
         Commands::Bridge { pipe_name } => bridge::run(pipe_name.as_deref()),
         Commands::Clean => commands::clean::run(),
         Commands::Smoke { session } => commands::smoke::run(backend.as_ref(), &session),
+        #[cfg(feature = "librarian")]
         Commands::SampleAll { session, agents, output } => {
             commands::sample_all::run(backend.as_ref(), &session, &agents, output.as_deref())
         }
+        #[cfg(feature = "librarian")]
         Commands::Sample { session, name, state, lines } => {
             commands::sample::run(backend.as_ref(), &session, name.as_deref(), state.as_deref(), lines)
         }

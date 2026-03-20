@@ -1,7 +1,9 @@
 pub mod backend;
+#[cfg(feature = "bridge")]
 pub mod bridge;
 pub mod commands;
 pub mod error;
+#[cfg(feature = "librarian")]
 pub mod librarian;
 pub mod pipe;
 pub mod protocol;

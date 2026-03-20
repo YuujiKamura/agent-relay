@@ -9,10 +9,13 @@ pub mod run;
 pub mod send;
 pub mod smoke;
 pub mod state;
+#[cfg(feature = "librarian")]
 pub mod status;
 pub mod stop;
 pub mod tab;
 pub mod tabs;
+#[cfg(feature = "librarian")]
 pub mod sample;
+#[cfg(feature = "librarian")]
 pub mod sample_all;
 pub mod wait;

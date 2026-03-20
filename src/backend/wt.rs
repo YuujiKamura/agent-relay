@@ -1,5 +1,6 @@
 use crate::backend::AgentBackend;
 use crate::error::{AgentCtlError, Result};
+#[cfg(feature = "librarian")]
 use crate::librarian::AgentState;
 use crate::pipe;
 use crate::protocol;
@@ -45,6 +46,7 @@ impl AgentBackend for WtBackend {
         Ok(response)
     }
 
+    #[cfg(feature = "librarian")]
     fn wait(&self, session_hint: &str, timeout_secs: u64, auto_approve: bool) -> Result<()> {
         let s = session::find_session(session_hint)?;
         let deadline = Instant::now() + Duration::from_secs(timeout_secs);
@@ -127,6 +129,11 @@ impl AgentBackend for WtBackend {
         }
     }
 
+    #[cfg(not(feature = "librarian"))]
+    fn wait(&self, _session_hint: &str, _timeout_secs: u64, _auto_approve: bool) -> Result<()> {
+        Err(AgentCtlError::Other("librarian feature not enabled".into()))
+    }
+
     fn approve(&self, session_hint: &str) -> Result<()> {
         let s = session::find_session(session_hint)?;
         let msg = protocol::raw_input("agent-ctl", "y\r");
@@ -157,6 +164,7 @@ impl AgentBackend for WtBackend {
         Ok(response)
     }
 
+    #[cfg(feature = "librarian")]
     fn launch(&self, session_hint: &str, agent_type: &str, prompt: Option<&str>) -> Result<()> {
         let s = session::find_session(session_hint)?;
         let agent_cmd = match agent_type {
@@ -194,6 +202,11 @@ impl AgentBackend for WtBackend {
             let _ = pipe::send_pipe_message(&s.pipe_path, &enter_msg);
         }
         Ok(())
+    }
+
+    #[cfg(not(feature = "librarian"))]
+    fn launch(&self, _session_hint: &str, _agent_type: &str, _prompt: Option<&str>) -> Result<()> {
+        Err(AgentCtlError::Other("librarian feature not enabled".into()))
     }
 
     fn ping(&self, session_hint: &str) -> Result<String> {
