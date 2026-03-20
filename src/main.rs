@@ -1,4 +1,5 @@
 mod backend;
+mod bridge;
 mod commands;
 mod error;
 mod librarian;
@@ -31,13 +32,10 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Get agent status of a session
+    /// Get agent status of a session (via Librarian)
     Status {
         /// Session name or hint (substring match)
         session: String,
-        /// Use LLM librarian for state judgment instead of DLL status engine
-        #[arg(long)]
-        librarian: bool,
     },
     /// Send text to a session (INPUT + Enter)
     Send {
@@ -56,6 +54,9 @@ enum Commands {
         /// Number of lines to read
         #[arg(long, default_value = "30")]
         lines: usize,
+        /// Tab index to read from (default: active tab)
+        #[arg(long)]
+        tab: Option<usize>,
     },
     /// Wait for session to become idle
     Wait {
@@ -67,9 +68,6 @@ enum Commands {
         /// Auto-approve when approval is detected
         #[arg(long)]
         auto_approve: bool,
-        /// Use LLM librarian for state judgment
-        #[arg(long)]
-        librarian: bool,
     },
     /// Launch terminal (if needed), start agent, send task, wait for completion
     Run {
@@ -88,9 +86,6 @@ enum Commands {
         /// Stop at stage: launch, ready, sent (default), done
         #[arg(long, default_value = "sent")]
         stop_at: String,
-        /// Use LLM librarian for state judgment in wait phase
-        #[arg(long)]
-        librarian: bool,
     },
     /// Send approval (y + Enter) to a session
     Approve {
@@ -145,12 +140,43 @@ enum Commands {
         /// Session name or hint
         session: String,
     },
+    /// JSON bridge server for agent-deck WtcpDriver
+    Bridge {
+        /// Named pipe path (default: \\.\pipe\WT_CP_bridge)
+        #[arg(long)]
+        pipe_name: Option<String>,
+    },
     /// Remove dead session files from LocalAppData
     Clean,
     /// Automated smoke test (PING + LIST_TABS + STATE)
     Smoke {
         /// Session name or hint
         session: String,
+    },
+    /// Auto-cycle all agents and capture real buffers for test fixtures
+    SampleAll {
+        /// Session name or hint
+        session: String,
+        /// Agents to test (default: claude, gemini, codex)
+        #[arg(long, value_delimiter = ',')]
+        agents: Vec<String>,
+        /// Output file (default: tests/fixtures/buffers_real.toml)
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Capture real terminal buffer as Librarian test fixture
+    Sample {
+        /// Session name or hint
+        session: String,
+        /// Test case name (e.g. codex_ready). If omitted, just display + judge.
+        #[arg(long)]
+        name: Option<String>,
+        /// Expected state (e.g. AGENT_READY). If omitted, uses Librarian judgment.
+        #[arg(long)]
+        state: Option<String>,
+        /// Number of lines to TAIL
+        #[arg(long, default_value = "20")]
+        lines: usize,
     },
 }
 
@@ -167,23 +193,21 @@ fn main() {
 
     let result = match cli.command {
         Commands::List { alive_only, json } => commands::list::run(backend.as_ref(), alive_only, json),
-        Commands::Status { session, librarian } => commands::status::run(backend.as_ref(), &session, librarian),
+        Commands::Status { session } => commands::status::run(backend.as_ref(), &session),
         Commands::Send { session, text, enter } => commands::send::run(backend.as_ref(), &session, &text, enter),
-        Commands::Read { session, lines } => commands::read::run(backend.as_ref(), &session, lines),
+        Commands::Read { session, lines, tab } => commands::read::run(backend.as_ref(), &session, lines, tab),
         Commands::Wait {
             session,
             timeout,
             auto_approve,
-            librarian,
-        } => commands::wait::run(backend.as_ref(), &session, timeout, auto_approve, librarian),
+        } => commands::wait::run(backend.as_ref(), &session, timeout, auto_approve),
         Commands::Run {
             session,
             agent,
             task,
             exe,
             stop_at,
-            librarian,
-        } => commands::run::run(backend.as_ref(), &session, &agent, &task, exe.as_deref(), &stop_at, librarian),
+        } => commands::run::run(backend.as_ref(), &session, &agent, &task, exe.as_deref(), &stop_at),
         Commands::Approve { session } => commands::approve::run(backend.as_ref(), &session),
         Commands::Tab {
             session,
@@ -203,8 +227,15 @@ fn main() {
         Commands::RawSend { session, text } => commands::raw_send::run(backend.as_ref(), &session, &text),
         Commands::State { session } => commands::state::run(backend.as_ref(), &session),
         Commands::Tabs { session } => commands::tabs::run(backend.as_ref(), &session),
+        Commands::Bridge { pipe_name } => bridge::run(pipe_name.as_deref()),
         Commands::Clean => commands::clean::run(),
         Commands::Smoke { session } => commands::smoke::run(backend.as_ref(), &session),
+        Commands::SampleAll { session, agents, output } => {
+            commands::sample_all::run(backend.as_ref(), &session, &agents, output.as_deref())
+        }
+        Commands::Sample { session, name, state, lines } => {
+            commands::sample::run(backend.as_ref(), &session, name.as_deref(), state.as_deref(), lines)
+        }
     };
 
     if let Err(e) = result {
