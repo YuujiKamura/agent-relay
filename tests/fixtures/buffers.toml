@@ -1,0 +1,328 @@
+# Terminal buffer samples for Librarian state judgment testing.
+# Each [[case]] has: name, expected state, and a multi-line buffer sample.
+# Run with: cargo test --test librarian_judgment -- --nocapture
+
+# ═══════════════════════════════════════════
+# SHELL_IDLE — bare shell prompt, no agent
+# ═══════════════════════════════════════════
+
+[[case]]
+name = "bash_prompt"
+expected = "SHELL_IDLE"
+buffer = """
+yuuji@DESKTOP-ABC ~/projects
+$ """
+
+[[case]]
+name = "powershell_prompt"
+expected = "SHELL_IDLE"
+buffer = """
+PS C:\\Users\\yuuji> """
+
+[[case]]
+name = "git_bash_prompt"
+expected = "SHELL_IDLE"
+buffer = """
+yuuji@DESKTOP-ABC MINGW64 ~/agent-relay (main)
+$ """
+
+# ═══════════════════════════════════════════
+# SHELL_BUSY — shell command running, no prompt
+# ═══════════════════════════════════════════
+
+[[case]]
+name = "cargo_build_running"
+expected = "SHELL_BUSY"
+buffer = """
+   Compiling serde v1.0.210
+   Compiling tokio v1.40.0
+   Compiling agent-ctl v0.1.0
+"""
+
+[[case]]
+name = "npm_install_running"
+expected = "SHELL_BUSY"
+buffer = """
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm warn deprecated inflight@1.0.6: This module is not supported
+added 847 packages in 32s
+"""
+
+[[case]]
+name = "git_clone_running"
+expected = "SHELL_BUSY"
+buffer = """
+Cloning into 'repo'...
+remote: Enumerating objects: 12345, done.
+remote: Counting objects: 100% (12345/12345), done.
+Receiving objects:  45% (5555/12345), 12.34 MiB | 5.67 MiB/s
+"""
+
+# ═══════════════════════════════════════════
+# AGENT_STARTING — agent banner/loading
+# ═══════════════════════════════════════════
+
+[[case]]
+name = "claude_starting"
+expected = "AGENT_STARTING"
+buffer = """
+$ claude
+
+╭────────────────────────────────────────╮
+│        ✻ Welcome to Claude Code!       │
+│                                        │
+│   /help for help, /status for status   │
+╰────────────────────────────────────────╯
+"""
+
+[[case]]
+name = "gemini_starting"
+expected = "AGENT_STARTING"
+buffer = """
+$ gemini
+✦ Welcome to Gemini CLI v0.27.0!
+Loading configuration...
+"""
+
+[[case]]
+name = "codex_starting"
+expected = "AGENT_STARTING"
+buffer = """
+$ codex
+Starting Codex CLI...
+OpenAI Codex v0.1.2
+"""
+
+# ═══════════════════════════════════════════
+# AGENT_READY — TUI up, awaiting first task
+# ═══════════════════════════════════════════
+
+[[case]]
+name = "claude_ready"
+expected = "AGENT_READY"
+buffer = """
+╭────────────────────────────────────────╮
+│        ✻ Welcome to Claude Code!       │
+│                                        │
+│   /help for help, /status for status   │
+╰────────────────────────────────────────╯
+
+  cwd: ~/agent-relay
+
+> """
+
+[[case]]
+name = "gemini_ready"
+expected = "AGENT_READY"
+buffer = """
+✦ Welcome to Gemini CLI!
+
+> Type your message"""
+
+[[case]]
+name = "codex_ready"
+expected = "AGENT_READY"
+buffer = """
+PowerShell 7.5.4
+PS C:\Users\yuuji> codex
+╭──────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.115.0)                   │
+│                                              │
+│ model:     gpt-5.4 medium   /model to change │
+│ directory: ~                                 │
+╰──────────────────────────────────────────────╯
+
+  Tip: New Use /fast to enable our fastest inference at 2X plan usage.
+
+
+› Write tests for @filename
+
+  gpt-5.4 medium · 100% left · ~"""
+
+# ═══════════════════════════════════════════
+# AGENT_WORKING — task in progress
+# ═══════════════════════════════════════════
+
+[[case]]
+name = "claude_working"
+expected = "AGENT_WORKING"
+buffer = """
+╭─ Read src/main.rs ──────────────────────╮
+│ 1  use std::env;                        │
+│ 2  fn main() {                          │
+│ 3      println!("hello");               │
+│ 4  }                                    │
+╰─────────────────────────────────────────╯
+"""
+
+[[case]]
+name = "gemini_working"
+expected = "AGENT_WORKING"
+buffer = """
+✦ I'll analyze the codebase structure for you.
+
+Thinking...
+
+╭─ shell ─────────────────────────────────╮
+│ $ ls src/                               │
+╰─────────────────────────────────────────╯
+"""
+
+[[case]]
+name = "codex_working"
+expected = "AGENT_WORKING"
+buffer = """
+Working (30s • esc to interrupt)
+
+ ⠋ Running ls src/
+"""
+
+# ═══════════════════════════════════════════
+# AGENT_APPROVAL — permission request
+# ═══════════════════════════════════════════
+
+[[case]]
+name = "claude_approval"
+expected = "AGENT_APPROVAL"
+buffer = """
+╭─ Bash ──────────────────────────────────╮
+│ rm -rf target/                          │
+╰─────────────────────────────────────────╯
+
+  Allow once  Allow always  Deny
+"""
+
+[[case]]
+name = "gemini_approval"
+expected = "AGENT_APPROVAL"
+buffer = """
+╭─ shell ─────────────────────────────────╮
+│ $ cargo build --release                 │
+╰─────────────────────────────────────────╯
+
+Action Required: Allow execution of this command?
+"""
+
+[[case]]
+name = "codex_approval"
+expected = "AGENT_APPROVAL"
+buffer = """
+  Would you like to run the following command?
+  cargo test --all
+
+  Yes, proceed  No, skip
+"""
+
+# ═══════════════════════════════════════════
+# AGENT_DONE — task completed, prompt back
+# ═══════════════════════════════════════════
+
+[[case]]
+name = "claude_done"
+expected = "AGENT_DONE"
+buffer = """
+╭─ Write src/lib.rs ──────────────────────╮
+│ Created new file with 45 lines          │
+╰─────────────────────────────────────────╯
+
+  I've created the new module. The changes include:
+  - Added error handling
+  - Updated the tests
+
+> """
+
+[[case]]
+name = "gemini_done"
+expected = "AGENT_DONE"
+buffer = """
+I've analyzed the codebase and here are my findings:
+
+1. The main entry point is `src/main.rs`
+2. There are 12 modules in the project
+3. Test coverage is approximately 67%
+
+> Type your message"""
+
+[[case]]
+name = "codex_done"
+expected = "AGENT_DONE"
+buffer = """
+› echo hello world
+
+
+• echo hello world を実行して結果を確認します。
+
+• Ran echo hello world
+  └ hello
+    world
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• 出力は以下でした。
+
+  hello
+  world
+
+
+› Write tests for @filename
+
+  gpt-5.4 medium · 90% left · ~"""
+
+# ═══════════════════════════════════════════
+# AGENT_INTERRUPTED — user interrupted
+# ═══════════════════════════════════════════
+
+[[case]]
+name = "claude_interrupted"
+expected = "AGENT_INTERRUPTED"
+buffer = """
+╭─ Bash ──────────────────────────────────╮
+│ cargo build --release                   │
+╰─────────────────────────────────────────╯
+
+  ⎈ Interrupted by user
+
+> """
+
+[[case]]
+name = "codex_interrupted"
+expected = "AGENT_INTERRUPTED"
+buffer = """
+Working (45s • esc to interrupt)
+
+  Interrupted.
+
+› """
+
+# ═══════════════════════════════════════════
+# AGENT_ERROR — crash or error
+# ═══════════════════════════════════════════
+
+[[case]]
+name = "claude_error"
+expected = "AGENT_ERROR"
+buffer = """
+Error: Connection failed: API rate limit exceeded
+Please try again later.
+
+yuuji@DESKTOP-ABC ~/agent-relay
+$ """
+
+[[case]]
+name = "agent_panic"
+expected = "AGENT_ERROR"
+buffer = """
+thread 'main' panicked at 'index out of bounds: the len is 0 but the index is 0'
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+yuuji@DESKTOP-ABC ~/agent-relay
+$ """
+
+[[case]]
+name = "codex_error"
+expected = "AGENT_ERROR"
+buffer = """
+Error: Failed to connect to OpenAI API
+  Status: 503 Service Unavailable
+
+› """

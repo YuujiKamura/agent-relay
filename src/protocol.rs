@@ -23,6 +23,11 @@ pub fn tail(lines: usize) -> String {
     format!("TAIL|{}", lines)
 }
 
+/// Build a TAIL request for a specific tab.
+pub fn tail_tab(lines: usize, tab_index: usize) -> String {
+    format!("TAIL|{}|{}", lines, tab_index)
+}
+
 /// Build a LIST_TABS request.
 pub fn list_tabs() -> String {
     "LIST_TABS".to_string()
@@ -36,11 +41,6 @@ pub fn input(from: &str, text: &str) -> String {
 /// Build a RAW_INPUT request (direct terminal write).
 pub fn raw_input(from: &str, text: &str) -> String {
     format!("RAW_INPUT|{}|{}", from, encode_payload(text))
-}
-
-/// Build an AGENT_STATUS request.
-pub fn agent_status() -> String {
-    "AGENT_STATUS".to_string()
 }
 
 /// Build a NEW_TAB request.
@@ -64,41 +64,6 @@ pub fn switch_tab(index: usize) -> String {
 /// Build a FOCUS request.
 pub fn focus() -> String {
     "FOCUS".to_string()
-}
-
-/// Build a SET_AGENT request.
-pub fn set_agent(tab_index: usize, agent_type: &str) -> String {
-    format!("SET_AGENT|{}|{}", tab_index, agent_type)
-}
-
-/// Parse AGENT_STATUS response fields.
-#[derive(Debug, Clone)]
-pub struct AgentStatusResponse {
-    pub session: String,
-    pub status: String,
-    pub ms_since_change: u64,
-    pub tab: usize,
-}
-
-impl AgentStatusResponse {
-    /// Parse "AGENT_STATUS|session|status|ms|tab=N"
-    pub fn parse(response: &str) -> Option<Self> {
-        let line = response.lines().next()?.trim();
-        let parts: Vec<&str> = line.split('|').collect();
-        if parts.len() < 5 || parts[0] != "AGENT_STATUS" {
-            return None;
-        }
-        let tab = parts[4]
-            .strip_prefix("tab=")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        Some(Self {
-            session: parts[1].to_string(),
-            status: parts[2].to_string(),
-            ms_since_change: parts[3].parse().unwrap_or(0),
-            tab,
-        })
-    }
 }
 
 /// Check if a response is an error.
@@ -134,16 +99,6 @@ mod tests {
     fn test_raw_input_message() {
         let msg = raw_input("claude", "\r");
         assert!(msg.starts_with("RAW_INPUT|claude|"));
-    }
-
-    #[test]
-    fn test_agent_status_parse() {
-        let resp = "AGENT_STATUS|my-session|IDLE|1234|tab=2\n";
-        let parsed = AgentStatusResponse::parse(resp).unwrap();
-        assert_eq!(parsed.session, "my-session");
-        assert_eq!(parsed.status, "IDLE");
-        assert_eq!(parsed.ms_since_change, 1234);
-        assert_eq!(parsed.tab, 2);
     }
 
     #[test]

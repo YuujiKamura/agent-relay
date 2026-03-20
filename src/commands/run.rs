@@ -65,7 +65,6 @@ pub fn run(
     task: &str,
     exe: Option<&str>,
     stop_at: &str,
-    use_librarian: bool,
 ) -> Result<()> {
     // Step 1: Ensure session exists
     let session = ensure_session(session_hint, exe)?;
@@ -74,7 +73,7 @@ pub fn run(
         return Ok(());
     }
 
-    // Step 2: Launch agent via backend.launch (SET_AGENT + status-based READY detection)
+    // Step 2: Launch agent via backend.launch (score-based READY detection)
     eprintln!("[run] Launching agent '{}'...", agent);
     backend.launch(&session, agent, None)?;
     println!("AGENT_READY | session={} | agent={}", session, agent);
@@ -90,13 +89,9 @@ pub fn run(
         return Ok(());
     }
 
-    // Step 4: Wait for completion
+    // Step 4: Wait for completion (Librarian-based)
     eprintln!("[run] Waiting for completion (auto-approve enabled)...");
-    if use_librarian {
-        super::wait::run(backend, &session, 600, true, true)?;
-    } else {
-        backend.wait(&session, 600, true)?;
-    }
+    super::wait::run(backend, &session, 600, true)?;
     println!("TASK_DONE | session={} | agent={}", session, agent);
     Ok(())
 }

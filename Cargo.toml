@@ -5,6 +5,10 @@ edition = "2021"
 description = "Rust CLI for Windows Terminal Control Plane — replaces wt-control.ps1"
 authors = ["yuuji"]
 
+[lib]
+name = "agent_ctl"
+path = "src/lib.rs"
+
 [[bin]]
 name = "agent-ctl"
 path = "src/main.rs"

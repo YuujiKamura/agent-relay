@@ -1,7 +1,8 @@
-use crate::backend::{AgentBackend, AgentStatus};
+use crate::backend::AgentBackend;
 use crate::error::{AgentCtlError, Result};
+use crate::librarian::AgentState;
 use crate::pipe;
-use crate::protocol::{self, AgentStatusResponse};
+use crate::protocol;
 use crate::session::{self, SessionInfo};
 use std::time::{Duration, Instant};
 
@@ -10,20 +11,6 @@ pub struct WtBackend;
 impl AgentBackend for WtBackend {
     fn list(&self) -> Result<Vec<SessionInfo>> {
         Ok(session::discover_sessions())
-    }
-
-    fn status(&self, session_hint: &str) -> Result<AgentStatus> {
-        let s = session::find_session(session_hint)?;
-        let resp = pipe::send_pipe_message(&s.pipe_path, &protocol::agent_status())?;
-        let parsed = AgentStatusResponse::parse(&resp)
-            .ok_or_else(|| AgentCtlError::Protocol(format!("Failed to parse status response: {}", resp)))?;
-        
-        Ok(AgentStatus {
-            name: parsed.session,
-            status: parsed.status,
-            ms_since_change: parsed.ms_since_change,
-            tab: parsed.tab,
-        })
     }
 
     fn send(&self, session_hint: &str, text: &str) -> Result<()> {
@@ -45,9 +32,12 @@ impl AgentBackend for WtBackend {
         Ok(())
     }
 
-    fn read(&self, session_hint: &str, lines: usize) -> Result<String> {
+    fn read(&self, session_hint: &str, lines: usize, tab_index: Option<usize>) -> Result<String> {
         let s = session::find_session(session_hint)?;
-        let msg = protocol::tail(lines);
+        let msg = match tab_index {
+            Some(idx) => protocol::tail_tab(lines, idx),
+            None => protocol::tail(lines),
+        };
         let response = pipe::send_pipe_message(&s.pipe_path, &msg)?;
         if let Some(err) = protocol::is_error(&response) {
             return Err(AgentCtlError::ServerError(err));
@@ -58,62 +48,78 @@ impl AgentBackend for WtBackend {
     fn wait(&self, session_hint: &str, timeout_secs: u64, auto_approve: bool) -> Result<()> {
         let s = session::find_session(session_hint)?;
         let deadline = Instant::now() + Duration::from_secs(timeout_secs);
-        let poll_interval = Duration::from_millis(3000);
-
-        // State machine: WORKING → IDLE → DONE (after 30s idle)
-        //                WORKING → APPROVAL → (send once) → wait for !APPROVAL → WORKING
-        let mut approval_sent = false; // true = already sent, waiting for APPROVAL to clear
+        let poll_interval = Duration::from_secs(3);
+        let mut approval_sent = false;
+        let mut saw_working = false;
+        let mut consecutive_done = 0u32;
 
         loop {
             if Instant::now() > deadline {
                 return Err(AgentCtlError::WaitTimeout(timeout_secs));
             }
 
-            let response = match pipe::send_pipe_message(&s.pipe_path, &protocol::agent_status()) {
+            let tail_resp = match pipe::send_pipe_message(&s.pipe_path, &protocol::tail(20)) {
                 Ok(r) => r,
-                Err(_) => {
-                    // Bug #3: reset consecutive_idle on pipe error (now removed, but keep approval_sent)
-                    std::thread::sleep(poll_interval);
-                    continue;
-                }
+                Err(_) => { std::thread::sleep(poll_interval); continue; }
+            };
+            let buffer = tail_resp.splitn(2, '\n').nth(1).unwrap_or("");
+
+            let judgment = match crate::librarian::judge(buffer) {
+                Ok(j) => j,
+                Err(e) => { eprintln!("[wait] librarian error: {e}"); std::thread::sleep(poll_interval); continue; }
             };
 
-            let Some(status) = AgentStatusResponse::parse(&response) else {
-                // Bug #3: reset consecutive_idle on parse error (now removed, but keep approval_sent)
-                std::thread::sleep(poll_interval);
-                continue;
-            };
+            eprintln!("[wait] state={}", judgment.state.as_str());
+            for l in judgment.context(3) {
+                eprintln!("[wait]   {}", l);
+            }
 
-            match status.status.as_str() {
-                // ── APPROVAL: send once, wait for state transition ──
-                "APPROVAL" => {
+            match judgment.state {
+                AgentState::AgentApproval => {
+                    saw_working = true;
                     if !auto_approve {
-                        return Err(AgentCtlError::Other(
-                            "APPROVAL required but auto_approve is disabled (use --auto-approve)".into(),
-                        ));
+                        return Err(AgentCtlError::Other("AGENT_APPROVAL but auto_approve disabled".into()));
                     }
                     if !approval_sent {
-                        eprintln!("[wait] APPROVAL detected, sending approval...");
-                        let approve_msg = protocol::raw_input("agent-ctl", "1");
-                        let _ = pipe::send_pipe_message(&s.pipe_path, &approve_msg);
+                        eprintln!("[wait] AGENT_APPROVAL detected, sending approval...");
+                        let msg = protocol::raw_input("agent-ctl", "1");
+                        let _ = pipe::send_pipe_message(&s.pipe_path, &msg);
                         approval_sent = true;
                     }
-                    // approval_sent=true: do nothing, wait for WORKING/IDLE transition
                 }
-                // ── IDLE/READY: DONE after 8s sustained idle ──
-                "IDLE" | "READY" => {
-                    approval_sent = false; // APPROVAL cleared
-                    if status.ms_since_change > 8000 {
-                        eprintln!("[wait] DONE (idle for {}ms)", status.ms_since_change);
+                AgentState::AgentDone => {
+                    consecutive_done += 1;
+                    if saw_working || consecutive_done >= 2 {
+                        eprintln!("[wait] AGENT_DONE");
                         return Ok(());
                     }
+                    eprintln!("[wait] AGENT_DONE (waiting for WORKING first, consecutive={}...)", consecutive_done);
                 }
-                // ── WORKING: agent is active, APPROVAL was consumed ──
-                "WORKING" | "STARTING" => {
-                    approval_sent = false; // state transitioned away from APPROVAL, safe to reset
+                AgentState::ShellIdle => {
+                    eprintln!("[wait] SHELL_IDLE — agent not running");
+                    return Ok(());
                 }
-                other => {
-                    eprintln!("[wait] Unknown status: {}", other);
+                AgentState::AgentReady => {
+                    consecutive_done += 1;
+                    if saw_working || consecutive_done >= 2 {
+                        eprintln!("[wait] AGENT_READY — task cycle complete");
+                        return Ok(());
+                    }
+                    eprintln!("[wait] AGENT_READY (waiting for WORKING first, consecutive={}...)", consecutive_done);
+                }
+                AgentState::AgentInterrupted => {
+                    return Err(AgentCtlError::Other("Agent was interrupted".into()));
+                }
+                AgentState::AgentError => {
+                    return Err(AgentCtlError::Other("Agent error/crash".into()));
+                }
+                AgentState::AgentWorking | AgentState::AgentStarting | AgentState::ShellBusy => {
+                    saw_working = true;
+                    consecutive_done = 0;
+                    approval_sent = false;
+                }
+                AgentState::Unknown => {
+                    eprintln!("[wait] UNKNOWN state, continuing...");
                 }
             }
 
@@ -153,22 +159,6 @@ impl AgentBackend for WtBackend {
 
     fn launch(&self, session_hint: &str, agent_type: &str, prompt: Option<&str>) -> Result<()> {
         let s = session::find_session(session_hint)?;
-
-        // Step 1: Register agent type with SET_AGENT
-        let status_resp = pipe::send_pipe_message(&s.pipe_path, &protocol::agent_status())?;
-        let tab_idx = AgentStatusResponse::parse(&status_resp)
-            .map(|st| st.tab)
-            .unwrap_or(0);
-
-        let set_msg = protocol::set_agent(tab_idx, agent_type);
-        let _ = pipe::send_pipe_message(&s.pipe_path, &set_msg);
-
-        // Step 2: Launch "bash" + Enter
-        let bash_msg = protocol::raw_input("agent-ctl", "bash\r");
-        let _ = pipe::send_pipe_message(&s.pipe_path, &bash_msg);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-
-        // Step 3: Launch agent command + Enter
         let agent_cmd = match agent_type {
             "claude" => "claude",
             "gemini" => "gemini",
@@ -178,31 +168,31 @@ impl AgentBackend for WtBackend {
         let launch_msg = protocol::raw_input("agent-ctl", &format!("{}\r", agent_cmd));
         let _ = pipe::send_pipe_message(&s.pipe_path, &launch_msg);
 
-        // Step 4: Wait for READY status
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let deadline = Instant::now() + Duration::from_secs(60);
         loop {
-            if std::time::Instant::now() > deadline {
+            if Instant::now() > deadline {
+                eprintln!("[launch] Timeout waiting for agent ready");
                 break;
             }
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            if let Ok(resp) = pipe::send_pipe_message(&s.pipe_path, &protocol::agent_status()) {
-                if let Some(st) = AgentStatusResponse::parse(&resp) {
-                    if st.status == "READY" || st.status == "IDLE" {
+            std::thread::sleep(Duration::from_secs(2));
+            if let Ok(tail) = pipe::send_pipe_message(&s.pipe_path, &protocol::tail(10)) {
+                let buf = tail.splitn(2, '\n').nth(1).unwrap_or("");
+                let last = buf.lines().last().unwrap_or("");
+                eprintln!("[launch] ... {}", last);
+                if let Some((state, _)) = crate::librarian::judge_by_score(buf) {
+                    if matches!(state, AgentState::AgentReady | AgentState::AgentDone) {
                         break;
                     }
                 }
             }
         }
 
-        // Step 5: Send prompt if provided
         if let Some(prompt_text) = prompt {
             let input_msg = protocol::input("agent-ctl", prompt_text);
             let _ = pipe::send_pipe_message(&s.pipe_path, &input_msg);
-
             let enter_msg = protocol::raw_input("agent-ctl", "\r");
             let _ = pipe::send_pipe_message(&s.pipe_path, &enter_msg);
         }
-
         Ok(())
     }
 

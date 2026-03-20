@@ -13,4 +13,6 @@ pub mod status;
 pub mod stop;
 pub mod tab;
 pub mod tabs;
+pub mod sample;
+pub mod sample_all;
 pub mod wait;
